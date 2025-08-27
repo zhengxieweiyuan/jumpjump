@@ -1,0 +1,15 @@
+# 自动生成的图片文件
+*.png
+
+# 数据文件夹
+
+
+# VS Code配置
+.vscode/
+
+# 自动跳转结果
+autojump_result.png
+autojump_screenshot.png
+
+jump_jump_model.pth
+__pycache__/
