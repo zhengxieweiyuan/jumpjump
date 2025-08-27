@@ -19,7 +19,7 @@ GAME_WINDOW_TITLE = "跳一跳"
 MODEL_PATH = "jump_jump_model.pth"
 # 按压时间系数，需要根据实际情况微调
 # 系数越大，按压时间越长
-PRESS_COEFFICIENT = 2.4678   #这个根据不同的电脑分辨率来
+PRESS_COEFFICIENT = 2.6  #这个根据不同的电脑分辨率来
 # 每次跳跃之间的间隔（秒）
 JUMP_INTERVAL = 1.5
 # 截图保存路径

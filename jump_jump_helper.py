@@ -7,7 +7,7 @@ from PIL import Image ,ImageDraw
 import os
 import xml.etree.ElementTree as ET
 import math
-
+FAILED_IMAGE_SAVE_DIR =".\data\images"
 # --- 1. 自定义数据集类 ---
 class JumpDataset(Dataset):
     def __init__(self, root, transforms):
@@ -215,6 +215,7 @@ def get_jump_distance(model_path, image_path, visualize=False):
         print(f"中心点像素距离: {distance:.2f}")
     else:
         print("未能同时找到棋子和目标方块。")
+        
         distance = None
 
     # 不再在此处保存或显示图片，而是返回图片对象
@@ -226,7 +227,7 @@ if __name__ == '__main__':
     
     # **步骤一：训练模型**
     # 准备好数据后，取消下面的注释来开始训练
-    train_model(DATA_PATH, MODEL_SAVE_PATH, num_epochs=30)
+    #train_model(DATA_PATH, MODEL_SAVE_PATH, num_epochs=30)
     
    # **步骤二：使用模型进行推理**
    # 训练完成后，用下面的代码来测试一张新图片

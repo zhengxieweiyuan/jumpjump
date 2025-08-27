@@ -34,7 +34,7 @@ python jump_jump_helper.py --train
 ## 注意事项
 - 确保游戏开始后窗口在屏幕可见区域（可以让vs小窗，调出微信小程序游戏跳一跳与他并列）
 - 首次使用需要训练模型或下载预训练模型
-- 在connectprogram.py 中 PRESS_COEFFICIENT根据个人电脑的分辨率来测试 (分辨率为2560x1440 缩放150% 大概为4678)
+- 在connectprogram.py 中 PRESS_COEFFICIENT根据个人电脑的分辨率来测试 (分辨率为2560x1440 缩放150% 大概为2.6)
   
 ## 贡献指南
 欢迎提交Pull Request，请确保代码风格一致并通过测试。
