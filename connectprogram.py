@@ -155,7 +155,7 @@ def main():
                         
                         # 使用时间戳生成唯一文件名
                         timestamp_suffix = int(time.time())
-                        fail_filename = f"fail_picture2_{timestamp_suffix}.png"
+                        fail_filename = f"fail_picture3_{timestamp_suffix}.png"
                         fail_save_path = os.path.join(FAILED_IMAGE_SAVE_DIR, fail_filename)
                         
                         # 复制导致失败的上一张截图到失败目录
