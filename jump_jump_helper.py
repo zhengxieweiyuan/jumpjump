@@ -1,6 +1,7 @@
 import torch
 import torchvision
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor,FasterRCNN_ResNet50_FPN_V2_Weights
+from torchvision.transforms import v2 as T
 from torchvision.transforms import v2 as T
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image ,ImageDraw
@@ -61,8 +62,10 @@ class JumpDataset(Dataset):
 
 # --- 2. 模型修改 ---
 def get_model(num_classes):
+    weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
+ 
     # 加载一个在COCO上预训练的模型
-    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights='DEFAULT')
+    model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(weights=weights)
     
     # 获取分类器的输入特征数
     in_features = model.roi_heads.box_predictor.cls_score.in_features
@@ -80,10 +83,13 @@ def train_model(data_path, model_save_path, num_epochs=10):
     
         # 定义数据变换（加入数据增强）
     transforms = T.Compose([
-        T.ToTensor(), # 将图片转换为Tensor
-        T.RandomPhotometricDistort(), # 随机调整亮度、对比度、色调等
-        T.RandomHorizontalFlip(p=0.5), # 50%的概率水平翻转
-        T.ToDtype(torch.float, scale=True), # 转换数据类型并归一化
+    T.ToTensor(), # 将图片转换为Tensor
+    # 增强数据多样性
+    T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+    T.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.95, 1.05)),
+    T.RandomPhotometricDistort(), # 随机调整亮度、对比度、色调等
+    T.RandomHorizontalFlip(p=0.5), # 50%的概率水平翻转
+    T.ToDtype(torch.float, scale=True), # 转换数据类型并归一化
     ])
     
     # 创建数据集和数据加载器
@@ -98,7 +104,10 @@ def train_model(data_path, model_save_path, num_epochs=10):
     # 定义优化器
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
-    
+     # 添加学习率调度器
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
+                                                   step_size=10, # 每10个epoch
+                                                   gamma=0.1)   # 学习率乘以0.1
     print("--- 开始训练 ---")
     for epoch in range(num_epochs):
         model.train()
@@ -115,12 +124,14 @@ def train_model(data_path, model_save_path, num_epochs=10):
             optimizer.step()
             
             total_loss += losses.item()
+        # 更新学习率
+        lr_scheduler.step()
         
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data_loader)}")
         
     torch.save(model.state_dict(), model_save_path)
     print(f"--- 训练完成，模型已保存至 {model_save_path} ---")
-
+   
 # --- 4. 推理和距离计算函数 ---
 def get_jump_distance(model_path, image_path, visualize=False):
     """
@@ -174,7 +185,7 @@ def get_jump_distance(model_path, image_path, visualize=False):
         box = boxes[i].tolist()
 
         # 置信度阈值可以根据模型实际表现调整
-        if score > 0.7:
+        if score > 0.6:
             if label == 1 and score > best_piece_score: # 棋子
                 best_piece_score = score
                 best_piece_box = box
@@ -227,12 +238,12 @@ if __name__ == '__main__':
     
     # **步骤一：训练模型**
     # 准备好数据后，取消下面的注释来开始训练
-    #train_model(DATA_PATH, MODEL_SAVE_PATH, num_epochs=30)
+    train_model(DATA_PATH, MODEL_SAVE_PATH, num_epochs=50)
     
    # **步骤二：使用模型进行推理**
    # 训练完成后，用下面的代码来测试一张新图片
     if os.path.exists(MODEL_SAVE_PATH):
-        TEST_IMAGE_PATH = "D:\\jumpjump\\data\\images\\fail_picture_1756219413.png" # 换成你的测试图片
+        TEST_IMAGE_PATH = "D:\\jumpjump\\data\\images\\fail_picture4_1756748844.png" # 换成你的测试图片
         distance, result_img = get_jump_distance(MODEL_SAVE_PATH, TEST_IMAGE_PATH)
         if distance is not None:
             output_path = "result.png"
