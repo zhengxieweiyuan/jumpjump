@@ -21,15 +21,15 @@ MODEL_PATH = "jump_jump_model.pth"
 # 系数越大，按压时间越长
 PRESS_COEFFICIENT = 2.6  #这个根据不同的电脑分辨率来
 # 每次跳跃之间的间隔（秒）
-JUMP_INTERVAL = 1.5
+JUMP_INTERVAL = 0.01
 # 截图保存路径
-SCREENSHOT_PATH = "autojump_screenshot.png"
+SCREENSHOT_PATH = "screenshot.png"
 # 结果图保存路径
-RESULT_IMAGE_PATH = "autojump_result.png"
+RESULT_IMAGE_PATH = "result.png"
 # 是否开启可视化（在结果图上绘制检测框和中心点）
 VISUALIZE = True
 
-FAILED_IMAGE_SAVE_DIR =".\data\images"
+
 
 # --- Main Program ---
 
@@ -114,67 +114,35 @@ def main():
         print(f"错误：未找到标题为 '{GAME_WINDOW_TITLE}' 的窗口，请确保游戏正在运行。") 
         return
     print(f"成功找到窗口，坐标: {rect}")
-    
-    previous_screenshot_path = "previous_autojump_screenshot.png"
+    n=1
     try:
         while True:
             try: 
                 # 等待动画稳定
-                time.sleep(1.5)
-                capture_screen(rect, SCREENSHOT_PATH)
-                print(f"截图已保存至: {SCREENSHOT_PATH}")
-
-                # 2. 使用模型计算跳跃距离
-                print("正在分析图像，计算跳跃距离...")
+                time.sleep(1.3)
+                capture_screen(rect, SCREENSHOT_PATH) 
+                # 2. 使用模型计算跳跃距离 
                 distance, result_img = get_jump_distance(MODEL_PATH, SCREENSHOT_PATH, visualize=VISUALIZE)
-
+                 # 保存可视化结果图
+                result_img.save(RESULT_IMAGE_PATH)
+                 
                 # 3. 如果成功，则执行跳跃
-                if distance is not None:
-                    # 保存这张成功的截图，以便在下次失败时使用
-                    with Image.open(SCREENSHOT_PATH) as img:
-                        img.save(previous_screenshot_path)
-                         
-                    # 保存可视化结果图
-                    result_img.save(RESULT_IMAGE_PATH)
-                    print(f"分析结果图已保存至: {RESULT_IMAGE_PATH}")
-
-                    press_time = distance * PRESS_COEFFICIENT
-                    print(f"计算出的按压时间: {press_time:.2f} 毫秒")
-                    
+                if distance > 0: 
+                    print(f"第{n}次成功检测到目标方块,跳跃距离:",f"{distance:.2f}")
+                    press_time = distance * PRESS_COEFFICIENT 
                     # 4. 模拟鼠标点击 (修正参数顺序)
-                    simulate_jump(press_time, rect)
-                    
-                    # 等待下一次跳跃
-                    print(f"等待 {JUMP_INTERVAL} 秒后进行下一次跳跃...")
-                    time.sleep(JUMP_INTERVAL)
+                    simulate_jump(press_time, rect) 
+                    # 等待JUMP_INTERVAL秒后下一次跳跃 
+                    time.sleep(JUMP_INTERVAL) 
+                    n=n+1
                 else:
-                    print("未能计算出跳跃距离，这很可能是因为上一次跳跃失败了。")
-                    if os.path.exists(previous_screenshot_path):
-                        if not os.path.exists(FAILED_IMAGE_SAVE_DIR):
-                            os.makedirs(FAILED_IMAGE_SAVE_DIR, exist_ok=True)
-                        
-                        # 使用时间戳生成唯一文件名
-                        timestamp_suffix = int(time.time())
-                        fail_filename = f"fail_picture4_{timestamp_suffix}.png"
-                        fail_save_path = os.path.join(FAILED_IMAGE_SAVE_DIR, fail_filename)
-                        
-                        # 复制导致失败的上一张截图到失败目录
-                        with Image.open(previous_screenshot_path) as img:
-                            img.save(fail_save_path)
-                        print(f"导致失败的截图已保存至: {fail_save_path}")
-                    else:
-                        print("未找到上一张截图，无法保存导致失败的图片。")
-                    return # 退出程序
+                    break 
             except Exception as e:
                 print(f"发生意外错误: {e}") 
                 return
     finally:
-        # 清理临时的截图文件
-        if os.path.exists(previous_screenshot_path):
-            os.remove(previous_screenshot_path)
-if __name__ == '__main__':
+        # This block can be left empty or used for other cleanup if needed.
+        pass
 
-    if not os.path.exists(FAILED_IMAGE_SAVE_DIR):
-                  os.makedirs(FAILED_IMAGE_SAVE_DIR, exist_ok=True)
-                
+if __name__ == '__main__':         
     main()

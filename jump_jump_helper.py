@@ -7,6 +7,8 @@ from PIL import Image ,ImageDraw
 import os
 import xml.etree.ElementTree as ET
 import math
+import time
+FAILED_IMAGE_SAVE_DIR =".\data\images"
 
 # --- 1. 自定义数据集类 ---
 class JumpDataset(Dataset):
@@ -62,9 +64,11 @@ class JumpDataset(Dataset):
 # --- 2. 模型修改 ---
 def get_model(num_classes):
     # 加载一个在COCO上预训练的模型
-    model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights='DEFAULT')
-    
+    #model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights='DEFAULT')
+    # 新模型: 使用 MobileNetV3-Large FPN 作为骨干网络，速度更快
     # 获取分类器的输入特征数
+    model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights='DEFAULT')
+    
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     
     # 替换预训练的头部
@@ -80,12 +84,14 @@ def train_model(data_path, model_save_path, num_epochs=10):
     
         # 定义数据变换（加入数据增强）
     transforms = T.Compose([
-        T.ToTensor(), # 将图片转换为Tensor
+        T.ToImage(),  # 替换为新的方法
+        T.ToDtype(torch.float32, scale=True),  # 明确指定数据类型和缩放
+
         T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
         T.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.95, 1.05)),
         T.RandomPhotometricDistort(), # 随机调整亮度、对比度、色调等
         T.RandomHorizontalFlip(p=0.5), # 50%的概率水平翻转
-        T.ToDtype(torch.float, scale=True), # 转换数据类型并归一化
+        
     ])
     
     # 创建数据集和数据加载器
@@ -136,91 +142,93 @@ def get_jump_distance(model_path, image_path, visualize=False):
     """
     # 加载训练好的模型
     num_classes = 3
-    # 确保模型在CPU上加载，以防运行环境没有GPU
     device = torch.device('cpu')
     model = get_model(num_classes)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    try:
+        model.load_state_dict(torch.load(model_path, map_location=device))
+    except FileNotFoundError:
+        print(f"错误：模型文件未找到 at {model_path}")
+        return None, Image.open(image_path).convert("RGB")
     model.to(device)
     model.eval()
-    
+
     # 图像预处理
     img = Image.open(image_path).convert("RGB")
-    
-    # 仅在需要可视化时创建绘图对象
-    if visualize:
-        draw = ImageDraw.Draw(img)
-    
-    transform = T.Compose([T.ToTensor()])
+    # transform = T.Compose([T.ToTensor()])
+    transform = T.Compose([
+        T.ToImage(),
+        T.ToDtype(torch.float32, scale=True)
+    ])
     img_tensor = transform(img).to(device)
-    
+
     with torch.no_grad():
         prediction = model([img_tensor])
-        
+
     # 解析结果
     boxes = prediction[0]['boxes']
     labels = prediction[0]['labels']
     scores = prediction[0]['scores']
-    
-    piece_center = None
-    target_center = None
-    best_piece_box = None
-    best_target_box = None
-    
-    # 找到置信度最高的棋子和目标
-    best_piece_score = 0
-    best_target_score = 0
+
+    piece_center, target_center = None, None
+    best_piece_box, best_target_box = None, None
+    best_piece_score, best_target_score = 0, 0
 
     for i in range(len(boxes)):
         score = scores[i].item()
         label = labels[i].item()
         box = boxes[i].tolist()
 
-        # 置信度阈值可以根据模型实际表现调整
-        if score > 0.7:
+        if score > 0.6: # 置信度阈值
             if label == 1 and score > best_piece_score: # 棋子
                 best_piece_score = score
                 best_piece_box = box
-                # 计算棋子的底部中心点
-                piece_center = ((box[0] + box[2]) / 2, box[3]) 
+                piece_center = ((box[0] + box[2]) / 2, box[3])
             elif label == 2 and score > best_target_score: # 目标
                 best_target_score = score
                 best_target_box = box
-                # 目标方块我们依然用几何中心
                 target_center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+     
+    timestamp_suffix = int(time.time())
+    fail_filename = f"fail_picture5_{timestamp_suffix}.png"
+    fail_save_path = os.path.join(FAILED_IMAGE_SAVE_DIR, fail_filename)
 
-    # --- 可视化部分 (如果开启) ---
+    distance = None 
+    if piece_center and target_center: 
+        distance = math.sqrt((piece_center[0] - target_center[0]) ** 2 + (piece_center[1] - target_center[1]) ** 2)
+        if piece_center[1] < target_center[1]:
+            print("检测到异常情况：目标方块位于棋子下方，判定为失败。")
+            img.save(fail_save_path) 
+            distance = -2
+    elif piece_center is None or target_center is None:
+        img.save(fail_save_path) 
+        distance = -2
+        print("未检测到棋子和或标方块，无法计算距离。")
+    else:
+        img.save(fail_save_path) 
+        distance = -2
+        print("没有检测到棋子和目标方块，无法计算距离。")
+    # --- 可视化部分 ---
     if visualize:
-        # 绘制棋子的框和中心点
+        draw = ImageDraw.Draw(img)
+        # 绘制棋子
         if piece_center:
             draw.rectangle(best_piece_box, outline="red", width=3)
-            draw.text((best_piece_box[0], best_piece_box[1] - 15), "piece", fill="red")
-            # 在中心点画一个半径为5的圆
+            draw.text((best_piece_box[0], best_piece_box[1] - 15), f"piece ({best_piece_score:.2f})", fill="red")
             cx, cy = piece_center
             draw.ellipse((cx - 5, cy - 5, cx + 5, cy + 5), fill="red")
-
-        # 绘制目标的框和中心点
+        # 绘制目标
         if target_center:
             draw.rectangle(best_target_box, outline="lime", width=3)
-            draw.text((best_target_box[0], best_target_box[1] - 15), "target", fill="lime")
-            # 在中心点画一个半径为5的圆
+            draw.text((best_target_box[0], best_target_box[1] - 15), f"target ({best_target_score:.2f})", fill="lime")
             cx, cy = target_center
             draw.ellipse((cx - 5, cy - 5, cx + 5, cy + 5), fill="lime")
-
-    # 计算距离
-    if piece_center and target_center: 
-        distance = math.sqrt((piece_center[0] - target_center[0])**2 + (piece_center[1] - target_center[1])**2)
-        # 如果可视化开启，则绘制连接线
-        if visualize:
+        # 如果成功计算了距离，绘制连线
+        if distance:
             draw.line([piece_center, target_center], fill="yellow", width=2)
-        print(f"找到棋子, 中心: {piece_center}, 置信度: {best_piece_score:.2f}")
-        print(f"找到目标, 中心: {target_center}, 置信度: {best_target_score:.2f}")
-        print(f"中心点像素距离: {distance:.2f}")
-    else:
-        print("未能同时找到棋子和目标方块。")
-        distance = None
-
-    # 不再在此处保存或显示图片，而是返回图片对象
+        
+            
     return distance, img
+
 # --- 主程序入口 ---
 if __name__ == '__main__':
     DATA_PATH = 'data'
