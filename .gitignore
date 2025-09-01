@@ -10,3 +10,5 @@ autojump_screenshot.png
 
 jump_jump_model.pth
 __pycache__/
+
+train_log.txt

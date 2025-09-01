@@ -8,6 +8,9 @@ import os
 import xml.etree.ElementTree as ET
 import math
 import time
+import matplotlib.pyplot as plt
+from torch.optim.lr_scheduler import CosineAnnealingLR
+
 FAILED_IMAGE_SAVE_DIR =".\data\images"
 
 # --- 1. 自定义数据集类 ---
@@ -87,8 +90,8 @@ def train_model(data_path, model_save_path, num_epochs=10):
         T.ToImage(),  # 替换为新的方法
         T.ToDtype(torch.float32, scale=True),  # 明确指定数据类型和缩放
 
-        T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        T.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.95, 1.05)),
+        # T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        # T.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.95, 1.05)),
         T.RandomPhotometricDistort(), # 随机调整亮度、对比度、色调等
         T.RandomHorizontalFlip(p=0.5), # 50%的概率水平翻转
         
@@ -105,9 +108,13 @@ def train_model(data_path, model_save_path, num_epochs=10):
     
     # 定义优化器
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005)
+    optimizer = torch.optim.SGD(params, lr=0.01, momentum=0.9, weight_decay=0.0005)
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)  # T_max是周期
+
     
     print("--- 开始训练 ---")
+    #记录训练时间
+    start_time = time.time()
     for epoch in range(num_epochs):
         model.train()
         total_loss = 0
@@ -120,15 +127,20 @@ def train_model(data_path, model_save_path, num_epochs=10):
             
             optimizer.zero_grad()
             losses.backward()
+            scheduler.step()
             optimizer.step()
             
             total_loss += losses.item()
-        
+            print(f"Epoch {epoch+1}/{num_epochs}, Batch {len(images)}/{len(data_loader)}, Loss: {losses.item()}")
+        print("--- Epoch {epoch+1}/{num_epochs} 完成 ---")
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data_loader)}")
-        
+        #用txt文件保存训练信息用于可视化
+        with open("train_log.txt", "a") as f:
+            f.write(f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data_loader)}\n")
+         
     torch.save(model.state_dict(), model_save_path)
     print(f"--- 训练完成，模型已保存至 {model_save_path} ---")
-
+    print(f"--- 训练完成，耗时 {(time.time() - start_time)/60:.2f} 分钟 ---")
 # --- 4. 推理和距离计算函数 ---
 def get_jump_distance(model_path, image_path, visualize=False):
     """
@@ -189,7 +201,7 @@ def get_jump_distance(model_path, image_path, visualize=False):
                 target_center = ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
      
     timestamp_suffix = int(time.time())
-    fail_filename = f"fail_picture5_{timestamp_suffix}.png"
+    fail_filename = f"fail_picture6_{timestamp_suffix}.png"
     fail_save_path = os.path.join(FAILED_IMAGE_SAVE_DIR, fail_filename)
 
     distance = None 
@@ -229,19 +241,44 @@ def get_jump_distance(model_path, image_path, visualize=False):
             
     return distance, img
 
+#在训练model的时候有f"Epoch {epoch+1}/{num_epochs}, Loss: {total_loss/len(data_loader)}"
+#用txt文件保存训练信息用于可视化,编写一个函数
+def get_train_log():
+    with open("train_log.txt", "r") as f:
+        train_log = f.readlines()
+        # 解析训练信息
+        epochs = []
+        losses = []
+        for line in train_log:
+            if "Epoch" in line:
+                epoch, loss = line.split(", Loss: ")
+                epoch = int(epoch.split("/")[1])
+                loss = float(loss.strip())
+                epochs.append(epoch)
+                losses.append(loss)
+        return epochs, losses
 # --- 主程序入口 ---
 if __name__ == '__main__':
     DATA_PATH = 'data'
-    MODEL_SAVE_PATH = 'jump_jump_model.pth'
-    
+    MODEL_SAVE_PATH = 'jump_jump_model.pth' 
     # **步骤一：训练模型**
     # 准备好数据后，取消下面的注释来开始训练
-    train_model(DATA_PATH, MODEL_SAVE_PATH, num_epochs=30)
-    
+    train_model(DATA_PATH, MODEL_SAVE_PATH, num_epochs=50)
+    epochs, losses = get_train_log()
+    # 绘制训练信息
+    plt.plot(epochs, losses)
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Loss vs Epoch")
+    plt.show()  
+    # 保存图片
+    plt.savefig("loss_vs_epoch.png")
+
+
    # **步骤二：使用模型进行推理**
    # 训练完成后，用下面的代码来测试一张新图片
     if os.path.exists(MODEL_SAVE_PATH):
-        TEST_IMAGE_PATH = "D:\\jumpjump\\data\\images\\fail_picture_1756219413.png" # 换成你的测试图片
+        TEST_IMAGE_PATH = "D:\jumpjump\data\images\\fail_picture6_1756560341.png" # 换成你的测试图片
         distance, result_img = get_jump_distance(MODEL_SAVE_PATH, TEST_IMAGE_PATH)
         if distance is not None:
             output_path = "result.png"
